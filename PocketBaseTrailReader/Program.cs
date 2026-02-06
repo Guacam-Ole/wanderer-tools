@@ -34,6 +34,7 @@ builder.Services.AddSerilog(cfg =>
             propertiesAsLabels: ["job"]);
     cfg.WriteTo.Console(); //new  StringOutputFormatter() RenderedCompactJsonFormatter());
 });
+builder.Services.AddHttpClient();
 builder.Services.AddTransient<ITrailService, TrailService>();
 builder.Services.AddSingleton<State>(); // TODO: Read/Write
 var host = builder.Build();
