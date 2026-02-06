@@ -16,6 +16,25 @@ public class Trail
     [JsonPropertyName("gpx")]
     public string Gpx { get; set; } = string.Empty;
 
+    [JsonPropertyName("created")] 
+    public string CreatedStr { get; set; } = "";
+    
+    [JsonPropertyName("updated")]
+    public string? UpdatedStr { get; set; }
+
+    [JsonIgnore]
+    public DateTime? Updated
+    {
+        get
+        {
+            if (UpdatedStr == null) return null;
+            return DateTime.Parse(UpdatedStr);
+        }
+    }
+
+    [JsonIgnore]
+    public DateTime Created => DateTime.Parse(CreatedStr);
+
     public override string ToString()
     {
         return $"ID: {Id}\nName: {Name}\nAuthor: {Author}\nGPX: {Gpx}\n";

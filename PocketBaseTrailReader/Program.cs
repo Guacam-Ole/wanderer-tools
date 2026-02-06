@@ -1,63 +1,55 @@
+using System.Reflection;
 using Microsoft.Extensions.Configuration;
-using pocketbase_csharp_sdk;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using PocketBaseTrailReader;
 using PocketBaseTrailReader.Configuration;
-using PocketBaseTrailReader.Models;
+using PocketBaseTrailReader.Services;
+using Serilog;
+using Serilog.Events;
+using Serilog.Sinks.Grafana.Loki;
 
-namespace PocketBaseTrailReader;
+var builder = Host.CreateApplicationBuilder(args);
 
-class Program
+builder.Configuration.AddJsonFile("config.json", optional: false, reloadOnChange: true);
+
+builder.Services.Configure<PocketBaseConfig>(
+    builder.Configuration.GetSection("PocketBase"));
+
+builder.Services.AddLogging(cfg => cfg.SetMinimumLevel(LogLevel.Debug));
+builder.Services.AddSerilog(cfg =>
 {
-    static async Task Main(string[] args)
-    {
-        try
-        {
-            // Konfiguration laden
-            var configuration = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("config.json", optional: false, reloadOnChange: true)
-                .Build();
+    cfg.MinimumLevel.Debug()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("job", Assembly.GetEntryAssembly()?.GetName().Name)
+        .Enrich.WithProperty("desktop", Environment.GetEnvironmentVariable("DESKTOP_SESSION"))
+        .Enrich.WithProperty("language", Environment.GetEnvironmentVariable("LANGUAGE"))
+        .Enrich.WithProperty("lc", Environment.GetEnvironmentVariable("LC_NAME"))
+        .Enrich.WithProperty("timezone", Environment.GetEnvironmentVariable("TZ"))
+        .Enrich.WithProperty("dotnetVersion", Environment.GetEnvironmentVariable("DOTNET_VERSION"))
+        .Enrich.WithProperty("inContainer", Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"))
+        .WriteTo.GrafanaLoki(Environment.GetEnvironmentVariable("LOKIURL") ?? "http://thebeast:3100",
+            propertiesAsLabels: ["job"]);
+    cfg.WriteTo.Console(); //new  StringOutputFormatter() RenderedCompactJsonFormatter());
+});
+builder.Services.AddTransient<ITrailService, TrailService>();
+builder.Services.AddSingleton<State>(); // TODO: Read/Write
+var host = builder.Build();
 
-            var pbConfig = configuration.GetSection("PocketBase").Get<PocketBaseConfig>();
-
-            if (pbConfig == null)
-            {
-                Console.WriteLine("Fehler: Konfiguration konnte nicht geladen werden.");
-                return;
-            }
-
-            Console.WriteLine($"Verbinde mit PocketBase: {pbConfig.Url}");
-
-            // PocketBase-Client erstellen
-            var client = new PocketBaseClient(pbConfig.Url);
-
-            // Als Admin authentifizieren
-            await client.Admins.AuthenticateWithPassword(pbConfig.AdminEmail, pbConfig.AdminPassword);
-            Console.WriteLine("Erfolgreich als Admin angemeldet.");
-
-            // Trails abrufen
-            Console.WriteLine("\nRufe Trails ab...\n");
-            var trails = await client.Collections.ListAsync<Trail>("trails");
-
-            if (trails?.Items == null || trails.Items.Count == 0)
-            {
-                Console.WriteLine("Keine Trails gefunden.");
-                return;
-            }
-
-            Console.WriteLine($"Anzahl gefundener Trails: {trails.Items.Count}\n");
-            Console.WriteLine(new string('-', 80));
-
-            // Trails ausgeben
-            foreach (var trail in trails.Items)
-            {
-                Console.WriteLine(trail);
-                Console.WriteLine(new string('-', 80));
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Fehler aufgetreten: {ex.Message}");
-            Console.WriteLine($"Stack Trace: {ex.StackTrace}");
-        }
-    }
-}
+var trailService = host.Services.GetRequiredService<ITrailService>();
+await trailService.ReduceGpx();
+// var trails = await trailService.GetAllTrailsAsync();
+//
+// if (trails.Count == 0)
+// {
+//     Console.WriteLine("Keine Trails gefunden.");
+//     return;
+// }
+//
+// foreach (var trail in trails)
+// {
+//     Console.WriteLine(trail);
+//     Console.WriteLine(new string('-', 80));
+// }
