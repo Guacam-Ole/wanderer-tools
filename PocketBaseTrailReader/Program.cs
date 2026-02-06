@@ -14,8 +14,7 @@ var builder = Host.CreateApplicationBuilder(args);
 
 builder.Configuration.AddJsonFile("config.json", optional: false, reloadOnChange: true);
 
-builder.Services.Configure<PocketBaseConfig>(
-    builder.Configuration.GetSection("PocketBase"));
+builder.Services.Configure<AppConfig>(builder.Configuration);
 
 builder.Services.AddLogging(cfg => cfg.SetMinimumLevel(LogLevel.Debug));
 builder.Services.AddSerilog(cfg =>
@@ -29,28 +28,20 @@ builder.Services.AddSerilog(cfg =>
         .Enrich.WithProperty("lc", Environment.GetEnvironmentVariable("LC_NAME"))
         .Enrich.WithProperty("timezone", Environment.GetEnvironmentVariable("TZ"))
         .Enrich.WithProperty("dotnetVersion", Environment.GetEnvironmentVariable("DOTNET_VERSION"))
-        .Enrich.WithProperty("inContainer", Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"))
-        .WriteTo.GrafanaLoki(Environment.GetEnvironmentVariable("LOKIURL") ?? "http://thebeast:3100",
-            propertiesAsLabels: ["job"]);
-    cfg.WriteTo.Console(); //new  StringOutputFormatter() RenderedCompactJsonFormatter());
+        .Enrich.WithProperty("inContainer", Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"));
+
+    var lokiUrl = Environment.GetEnvironmentVariable("LOKIURL") ?? builder.Configuration.Get<AppConfig>()?.LokiUrl;
+    if (!string.IsNullOrEmpty(lokiUrl))
+        cfg.WriteTo.GrafanaLoki(lokiUrl, propertiesAsLabels: ["job"]);
+
+    cfg.WriteTo.Console();
 });
 builder.Services.AddHttpClient();
+builder.Services.AddTransient<IGpxSimplificationService, GpxSimplificationService>();
 builder.Services.AddTransient<ITrailService, TrailService>();
 builder.Services.AddSingleton<State>(); // TODO: Read/Write
 var host = builder.Build();
 
 var trailService = host.Services.GetRequiredService<ITrailService>();
 await trailService.ReduceGpx();
-// var trails = await trailService.GetAllTrailsAsync();
-//
-// if (trails.Count == 0)
-// {
-//     Console.WriteLine("Keine Trails gefunden.");
-//     return;
-// }
-//
-// foreach (var trail in trails)
-// {
-//     Console.WriteLine(trail);
-//     Console.WriteLine(new string('-', 80));
-// }
+

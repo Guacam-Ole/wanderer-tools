@@ -12,31 +12,34 @@ public class TrailService : ITrailService
 {
     private readonly ILogger<TrailService> _logger;
     private readonly State _state;
-    private readonly PocketBaseConfig _config;
+    private readonly AppConfig _config;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IGpxSimplificationService _gpxSimplificationService;
 
-    public TrailService(IOptions<PocketBaseConfig> config, ILogger<TrailService> logger, State state,
-        IHttpClientFactory httpClientFactory)
+    public TrailService(IOptions<AppConfig> config, ILogger<TrailService> logger, State state,
+        IHttpClientFactory httpClientFactory, IGpxSimplificationService gpxSimplificationService)
     {
         _logger = logger;
         _state = state;
         _config = config.Value;
         _httpClientFactory = httpClientFactory;
+        _gpxSimplificationService = gpxSimplificationService;
     }
 
-    public async Task<IReadOnlyList<Trail>> GetAllTrailsAsync()
+    private async Task<IReadOnlyList<T>> GetData<T>(string list, string? filter=null)
     {
-        _logger.LogDebug("Connecting to Database");
-        var client = new PocketBase(_config.Url);
-        await client.Admin.AuthenticateWithPasswordAsync(_config.AdminEmail, _config.AdminPassword);
+        var client = new PocketBase(_config.PocketBase.Url);
+        await client.Admin.AuthenticateWithPasswordAsync(_config.PocketBase.AdminEmail, _config.PocketBase.AdminPassword);
 
-        var trails = await client.Collection("trails").GetFullListAsync<Trail>();
-        return trails.IsFailed ? throw new Exception("Failed connecting to DB") : trails.Value.ToList();
+        var entries = await client.Collection(list).GetFullListAsync<T>(filter:filter);
+        return entries.IsFailed ? throw new Exception("Failed connecting to DB") : entries.Value.ToList();  
     }
+    
+    
 
     public async Task<byte[]> DownloadGpxAsync(Trail trail)
     {
-        var url = $"{_config.Url.TrimEnd('/')}/api/files/trails/{trail.Id}/{trail.Gpx}";
+        var url = $"{_config.PocketBase.Url.TrimEnd('/')}/api/files/trails/{trail.Id}/{trail.Gpx}";
         _logger.LogDebug("Downloading GPX from {Url}", url);
 
         var client = _httpClientFactory.CreateClient();
@@ -48,7 +51,7 @@ public class TrailService : ITrailService
     public async Task UploadGpxAsync(Trail trail, byte[] gpxData, string fileName)
     {
         var token = await GetAdminTokenAsync();
-        var url = $"{_config.Url.TrimEnd('/')}/api/collections/trails/records/{trail.Id}";
+        var url = $"{_config.PocketBase.Url.TrimEnd('/')}/api/collections/trails/records/{trail.Id}";
         _logger.LogDebug("Uploading GPX to {Url}", url);
 
         var client = _httpClientFactory.CreateClient();
@@ -64,28 +67,62 @@ public class TrailService : ITrailService
         _logger.LogInformation("GPX file replaced for trail {TrailId}", trail.Id);
     }
 
+    private async Task<string?> GetCommentUser()
+    {
+        if (_config.Comments.User == null || _config.Comments.Content == null) return null;
+        var activityPubUsers = await GetData<Actor>("activitypub_actors", "isLocal=true");
+        return activityPubUsers.FirstOrDefault(q => q.Name == _config.Comments.User)?.Id;
+
+    }
+    
     public async Task ReduceGpx()
     {
-        var allTrails = await GetAllTrailsAsync();
+        var commentuser = await GetCommentUser();
+        var allCategories = await GetData<Category>("categories");
+        var allTrails = await GetData<Trail>("trails");
         if (_state.LastChecked != null) allTrails = allTrails.Where(q => q.Created >= _state.LastChecked.Value || q.Updated!=null && q.Updated>=_state.LastChecked.Value).ToList();
+
+        var backupDir = Path.Combine("backups", DateTime.Now.ToString("yyyy-MM-dd"));
+        Directory.CreateDirectory(backupDir);
+
+        var smallerDir = Path.Combine(backupDir, "smaller");
+        Directory.CreateDirectory(smallerDir);
 
         foreach (var trail in allTrails)
         {
-            _logger.LogInformation("Checking Trail '{Name}' f(Id:'{Id}') ", trail.Name, trail.Id);
-            var gpxFIle = await DownloadGpxAsync(trail);
+            if (trail.Author!="w8151hey71jgaqq") continue; // Erst mal nur meine
+            
+            var category = allCategories.FirstOrDefault(q => q.Id == trail.CategoryId);
+            _logger.LogInformation("Checking Trail '{Name}' on category '{Category}' (Id:'{Id}') ", trail?.Name, category?.Name, trail?.Id);
+            var gpxData = await DownloadGpxAsync(trail);
+            var filePath = Path.Combine(backupDir, $"{trail.Name}.gpx");
+            await File.WriteAllBytesAsync(filePath, gpxData);
+            _logger.LogDebug("Saved GPX to {Path}", filePath);
+
+            if (category == null || !_config.MinDistanceMeters.TryGetValue(category.Name, out var minDistance))
+            {
+                _logger.LogWarning("No MinDistanceMeters configured for category '{Category}', skipping simplification", category?.Name);
+                continue;
+            }
+
+            var simplified = _gpxSimplificationService.Simplify(gpxData, minDistance);
+            var smallerPath = Path.Combine(smallerDir, $"{trail.Name}.gpx");
+            await File.WriteAllBytesAsync(smallerPath, simplified);
+            _logger.LogInformation("Simplified GPX: {OriginalSize} -> {SimplifiedSize} bytes",
+                gpxData.Length, simplified.Length);
         }
         
     }
 
     private async Task<string> GetAdminTokenAsync()
     {
-        var url = $"{_config.Url.TrimEnd('/')}/api/collections/_superusers/auth-with-password";
+        var url = $"{_config.PocketBase.Url.TrimEnd('/')}/api/collections/_superusers/auth-with-password";
         var client = _httpClientFactory.CreateClient();
 
         var payload = JsonSerializer.Serialize(new
         {
-            identity = _config.AdminEmail,
-            password = _config.AdminPassword
+            identity = _config.PocketBase.AdminEmail,
+            password = _config.PocketBase.AdminPassword
         });
 
         var response = await client.PostAsync(url,

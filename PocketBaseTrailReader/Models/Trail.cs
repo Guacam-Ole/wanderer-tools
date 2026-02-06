@@ -21,6 +21,9 @@ public class Trail
     
     [JsonPropertyName("updated")]
     public string? UpdatedStr { get; set; }
+    
+    [JsonPropertyName("category")]
+    public string CategoryId { get; set; }
 
     [JsonIgnore]
     public DateTime? Updated
