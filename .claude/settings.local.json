@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//root/.dotnet/**)",
+      "Bash(echo $PATH)",
+      "Bash(echo $DOTNET_ROOT)",
+      "Bash(/root/.dotnet/dotnet --version)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
