@@ -1,6 +1,7 @@
 # PocketBase Trail Redux
 
 Automatically reduces the file size of GPX tracks stored in a [Wanderer](https://github.com/Flomp/wanderer) PocketBase instance. Runs on a schedule, backs up the originals, replaces them with simplified versions, and optionally leaves a comment on the trail.
+(used on https://wadezimmer.de )
 
 ## Setup
 
