@@ -28,11 +28,6 @@
     </None>
   </ItemGroup>
 
-  <ItemGroup>
-    <None Remove="state.json" />
-    <Content Include="state.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+
 
 </Project>
