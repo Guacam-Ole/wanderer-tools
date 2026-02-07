@@ -7,9 +7,12 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/Dotnet.gitignore
 
-# IDE
+# IDE / tools
 .idea/
+.claude/
+.vscode/
 *.user
+dbschema.json
 
 # Build results
 [Dd]ebug/
