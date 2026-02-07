@@ -24,6 +24,9 @@ public class Trail
     
     [JsonPropertyName("category")]
     public string CategoryId { get; set; }
+    
+    [JsonPropertyName("public")]
+    public bool IsPublic { get; set; }
 
     [JsonIgnore]
     public DateTime? Updated

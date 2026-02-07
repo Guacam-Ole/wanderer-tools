@@ -26,16 +26,16 @@ public class TrailService : ITrailService
         _gpxSimplificationService = gpxSimplificationService;
     }
 
-    private async Task<IReadOnlyList<T>> GetData<T>(string list, string? filter=null)
+    private async Task<IReadOnlyList<T>> GetData<T>(string list, string? filter = null)
     {
         var client = new PocketBase(_config.PocketBase.Url);
-        await client.Admin.AuthenticateWithPasswordAsync(_config.PocketBase.AdminEmail, _config.PocketBase.AdminPassword);
+        await client.Admin.AuthenticateWithPasswordAsync(_config.PocketBase.AdminEmail,
+            _config.PocketBase.AdminPassword);
 
-        var entries = await client.Collection(list).GetFullListAsync<T>(filter:filter);
-        return entries.IsFailed ? throw new Exception("Failed connecting to DB") : entries.Value.ToList();  
+        var entries = await client.Collection(list).GetFullListAsync<T>(filter: filter);
+        return entries.IsFailed ? throw new Exception("Failed connecting to DB") : entries.Value.ToList();
     }
-    
-    
+
 
     public async Task<byte[]> DownloadGpxAsync(Trail trail)
     {
@@ -64,7 +64,7 @@ public class TrailService : ITrailService
 
         var response = await client.PatchAsync(url, content);
         response.EnsureSuccessStatusCode();
-        _logger.LogInformation("GPX file replaced for trail {TrailId}", trail.Id);
+        _logger.LogInformation("GPX file replaced for trail '{TrailId}'", trail.Id);
     }
 
     private async Task<string?> GetCommentUser()
@@ -72,15 +72,17 @@ public class TrailService : ITrailService
         if (_config.Comments.User == null || _config.Comments.Content == null) return null;
         var activityPubUsers = await GetData<Actor>("activitypub_actors", "isLocal=true");
         return activityPubUsers.FirstOrDefault(q => q.Name == _config.Comments.User)?.Id;
-
     }
-    
+
     public async Task ReduceGpx()
     {
         var commentuser = await GetCommentUser();
         var allCategories = await GetData<Category>("categories");
-        var allTrails = await GetData<Trail>("trails");
-        if (_state.LastChecked != null) allTrails = allTrails.Where(q => q.Created >= _state.LastChecked.Value || q.Updated!=null && q.Updated>=_state.LastChecked.Value).ToList();
+        var allTrails = await GetData<Trail>("trails", "public=true"); // TODO: filter by date
+        if (_state.LastChecked != null)
+            allTrails = allTrails.Where(q =>
+                    q.Created >= _state.LastChecked.Value || q.Updated != null && q.Updated >= _state.LastChecked.Value)
+                .ToList();
 
         var backupDir = Path.Combine("backups", DateTime.Now.ToString("yyyy-MM-dd"));
         Directory.CreateDirectory(backupDir);
@@ -90,28 +92,47 @@ public class TrailService : ITrailService
 
         foreach (var trail in allTrails)
         {
-            if (trail.Author!="w8151hey71jgaqq") continue; // Erst mal nur meine
-            
+            if (trail.Author != "w8151hey71jgaqq") continue; // Erst mal nur meine
+
             var category = allCategories.FirstOrDefault(q => q.Id == trail.CategoryId);
-            _logger.LogInformation("Checking Trail '{Name}' on category '{Category}' (Id:'{Id}') ", trail?.Name, category?.Name, trail?.Id);
-            var gpxData = await DownloadGpxAsync(trail);
-            var filePath = Path.Combine(backupDir, $"{trail.Name}.gpx");
-            await File.WriteAllBytesAsync(filePath, gpxData);
-            _logger.LogDebug("Saved GPX to {Path}", filePath);
+            _logger.LogInformation("Checking Trail '{Name}' on category '{Category}' (Id:'{Id}') ", trail?.Name,
+                category?.Name, trail?.Id);
+
 
             if (category == null || !_config.MinDistanceMeters.TryGetValue(category.Name, out var minDistance))
             {
-                _logger.LogWarning("No MinDistanceMeters configured for category '{Category}', skipping simplification", category?.Name);
+                _logger.LogWarning("No MinDistanceMeters configured for category '{Category}', skipping simplification",
+                    category?.Name);
+                continue;
+            }
+
+            var gpxData = await DownloadGpxAsync(trail);
+            if (gpxData.Length < _config.MinSizeKb)
+            {
+                _logger.LogInformation("Won't reduce trail '{Title}' because the file size is too small ({Size} KB)",
+                    trail.Name, gpxData.Length / 1024);
                 continue;
             }
 
             var simplified = _gpxSimplificationService.Simplify(gpxData, minDistance);
+            var newSizePercent = simplified.Length * 100 / gpxData.Length;
+            if (newSizePercent > _config.MinReductionPercent)
+            {
+                _logger.LogInformation("Won't reduce trail '{Title}' because it only would be reduced by {Percent}%",
+                    trail.Name,  newSizePercent);
+                continue;
+            }
+
+            var filePath = Path.Combine(backupDir, $"{trail.Name}.gpx");
+            await File.WriteAllBytesAsync(filePath, gpxData);
+            _logger.LogDebug("Saved GPX to {Path}", filePath);
             var smallerPath = Path.Combine(smallerDir, $"{trail.Name}.gpx");
             await File.WriteAllBytesAsync(smallerPath, simplified);
-            _logger.LogInformation("Simplified GPX: {OriginalSize} -> {SimplifiedSize} bytes",
+            _logger.LogInformation("Simplified GPX: {OriginalSize/1024}KB -> {SimplifiedSize/1024}KB bytes",
                 gpxData.Length, simplified.Length);
+            
+            
         }
-        
     }
 
     private async Task<string> GetAdminTokenAsync()
