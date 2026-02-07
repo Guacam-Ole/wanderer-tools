@@ -1,0 +1,7 @@
+bin/
+obj/
+backups/
+state.json
+.git/
+.idea/
+*.user

@@ -76,6 +76,7 @@ public class TrailService : ITrailService
 
     public async Task ReduceGpx()
     {
+        _state.LastChecked = DateTime.Now;
         var commentuser = await GetCommentUser();
         var allCategories = await GetData<Category>("categories");
         var allTrails = await GetData<Trail>("trails", "public=true"); // TODO: filter by date
@@ -93,9 +94,10 @@ public class TrailService : ITrailService
         var filesCount = 0;
         var reducedSize = 0;
 
+        
         foreach (var trail in allTrails)
         {
-            if (trail.Author != "w8151hey71jgaqq") continue; // Erst mal nur meine
+     //       if (trail.Author != "w8151hey71jgaqq") continue; // Erst mal nur meine
 
             var category = allCategories.FirstOrDefault(q => q.Id == trail.CategoryId);
             _logger.LogInformation("Checking Trail '{Name}' on category '{Category}' (Id:'{Id}') ", trail?.Name,
@@ -117,34 +119,71 @@ public class TrailService : ITrailService
                 continue;
             }
 
-            var simplified = _gpxSimplificationService.Simplify(gpxData, minDistance);
-            var newSizePercent = simplified.Length * 100 / gpxData.Length;
-            if (newSizePercent > _config.MinReductionPercent)
+            byte[] simplified;
+            try
             {
-                _logger.LogInformation("Won't reduce trail '{Title}' because it only would be reduced by {Percent}%",
+                 simplified = _gpxSimplificationService.Simplify(gpxData, minDistance);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error in gps for '{Name}'. will not reduce",trail.Name);
+                continue;
+            }
+            var newSizePercent = simplified.Length * 100 / gpxData.Length;
+            if (newSizePercent > _config.MinRequiredSizePercent)
+            {
+                _logger.LogInformation("Won't reduce trail '{Title}' because it only would be reduced to {Percent}% of original file",
                     trail.Name, newSizePercent);
                 continue;
             }
-
-            var filePath = Path.Combine(backupDir, $"{trail.Name}.gpx");
+            _logger.LogInformation("Trail '{Title}' reduced to {Percent}% of original file", trail.Name, newSizePercent);
+            var safeFileName = SanitizeFileName(trail.Name) + ".gpx";
+            var filePath = Path.Combine(backupDir, safeFileName);
             await File.WriteAllBytesAsync(filePath, gpxData);
             _logger.LogDebug("Saved GPX to {Path}", filePath);
-            var smallerPath = Path.Combine(smallerDir, $"{trail.Name}.gpx");
+            var smallerPath = Path.Combine(smallerDir, safeFileName);
             await File.WriteAllBytesAsync(smallerPath, simplified);
-            _logger.LogInformation("Simplified GPX: {OriginalSize/1024}KB -> {SimplifiedSize/1024}KB bytes",
-                gpxData.Length, simplified.Length);
+            _logger.LogInformation("Simplified GPX: {OriginalSize}KB -> {SimplifiedSize}KB bytes",
+                gpxData.Length/1024, simplified.Length/1024);
 
             filesCount++;
             reducedSize +=( gpxData.Length - simplified.Length);
+
+            await UploadGpxAsync(trail, simplified, trail.Gpx);
+            if (commentuser != null) await AddCommentToTrail(trail.Id, commentuser);
         }
 
-        _state.LastChecked = DateTime.Now;
+       
         _state.Runs.Add(new RunData
         {
             Created = DateTime.Now,
             FilesCount = filesCount,
             SavedBytes = reducedSize
         });
+    }
+
+    private async Task<Comment> AddCommentToTrail(string trailId, string authorId)
+    {
+        var client = new PocketBase(_config.PocketBase.Url);
+        await client.Admin.AuthenticateWithPasswordAsync(_config.PocketBase.AdminEmail,
+            _config.PocketBase.AdminPassword);
+
+        var comment = new Comment
+        {
+            Trail = trailId,
+            Author = authorId,
+            Text = $"<p>{_config.Comments.Content}</p>"
+        };
+
+        
+        var insertResponse = await client.Collection("comments").CreateAsync(comment);
+        return insertResponse.Value;
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c));
     }
 
     private async Task<string> GetAdminTokenAsync()

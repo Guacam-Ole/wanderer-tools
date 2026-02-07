@@ -1,0 +1,10 @@
+services:
+  trail-reader:
+    build: .
+    environment:
+      - CRON_SCHEDULE=0 3 * * *
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./backups:/app/backups
+      - ./state.json:/app/state.json
+    restart: unless-stopped

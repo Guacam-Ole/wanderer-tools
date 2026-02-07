@@ -1,11 +1,10 @@
 using System.Text.Json.Serialization;
+using PocketBaseSharp.Models;
 
 namespace PocketBaseTrailReader.Models;
 
-public class Actor
+public class Actor:BaseModel
 {
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = "";
 
     [JsonPropertyName("username")]
     public string Name { get; set; } = "";

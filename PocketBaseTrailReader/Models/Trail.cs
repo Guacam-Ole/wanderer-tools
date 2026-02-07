@@ -1,11 +1,10 @@
 using System.Text.Json.Serialization;
+using PocketBaseSharp.Models;
 
 namespace PocketBaseTrailReader.Models;
 
-public class Trail
+public class Trail:BaseModel
 {
-    [JsonPropertyName("id")]
-    public string Id { get; set; } = string.Empty;
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
@@ -16,30 +15,9 @@ public class Trail
     [JsonPropertyName("gpx")]
     public string Gpx { get; set; } = string.Empty;
 
-    [JsonPropertyName("created")] 
-    public string CreatedStr { get; set; } = "";
-    
-    [JsonPropertyName("updated")]
-    public string? UpdatedStr { get; set; }
-    
     [JsonPropertyName("category")]
     public string CategoryId { get; set; }
     
-    [JsonPropertyName("public")]
-    public bool IsPublic { get; set; }
-
-    [JsonIgnore]
-    public DateTime? Updated
-    {
-        get
-        {
-            if (UpdatedStr == null) return null;
-            return DateTime.Parse(UpdatedStr);
-        }
-    }
-
-    [JsonIgnore]
-    public DateTime Created => DateTime.Parse(CreatedStr);
 
     public override string ToString()
     {
