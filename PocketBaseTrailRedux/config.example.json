@@ -1,0 +1,18 @@
+{
+  "PocketBase": {
+    "Url": "http://localhost:8090",
+    "AdminEmail": "admin@example.com",
+    "AdminPassword": "your-password-here"
+  },
+  "MinDistanceMeters": {
+    "Biking": 10,
+    "Walking": 5,
+    "Hiking": 5
+  },
+  "Comments": {
+    "User": "",
+    "Content": ""
+  },
+  "MinSizeKb": 100,
+  "MinRequiredSizePercent": 40
+}
