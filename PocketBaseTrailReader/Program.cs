@@ -1,4 +1,7 @@
 using System.Reflection;
+using System.Security.AccessControl;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +13,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Sinks.Grafana.Loki;
 
+const string stateFile = "state.json";
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Configuration.AddJsonFile("config.json", optional: false, reloadOnChange: true);
@@ -39,9 +43,17 @@ builder.Services.AddSerilog(cfg =>
 builder.Services.AddHttpClient();
 builder.Services.AddTransient<IGpxSimplificationService, GpxSimplificationService>();
 builder.Services.AddTransient<ITrailService, TrailService>();
-builder.Services.AddSingleton<State>(); // TODO: Read/Write
+var state = new State();
+if (File.Exists(stateFile))
+{
+    var stateConfig = File.ReadAllText(stateFile);
+    state = JsonSerializer.Deserialize<State>(stateConfig);
+}
+
+builder.Services.AddSingleton<State>(state); 
 var host = builder.Build();
 
 var trailService = host.Services.GetRequiredService<ITrailService>();
 await trailService.ReduceGpx();
 
+File.WriteAllText(stateFile, JsonSerializer.Serialize(state));

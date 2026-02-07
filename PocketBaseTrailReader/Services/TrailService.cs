@@ -90,6 +90,9 @@ public class TrailService : ITrailService
         var smallerDir = Path.Combine(backupDir, "smaller");
         Directory.CreateDirectory(smallerDir);
 
+        var filesCount = 0;
+        var reducedSize = 0;
+
         foreach (var trail in allTrails)
         {
             if (trail.Author != "w8151hey71jgaqq") continue; // Erst mal nur meine
@@ -119,7 +122,7 @@ public class TrailService : ITrailService
             if (newSizePercent > _config.MinReductionPercent)
             {
                 _logger.LogInformation("Won't reduce trail '{Title}' because it only would be reduced by {Percent}%",
-                    trail.Name,  newSizePercent);
+                    trail.Name, newSizePercent);
                 continue;
             }
 
@@ -130,9 +133,18 @@ public class TrailService : ITrailService
             await File.WriteAllBytesAsync(smallerPath, simplified);
             _logger.LogInformation("Simplified GPX: {OriginalSize/1024}KB -> {SimplifiedSize/1024}KB bytes",
                 gpxData.Length, simplified.Length);
-            
-            
+
+            filesCount++;
+            reducedSize +=( gpxData.Length - simplified.Length);
         }
+
+        _state.LastChecked = DateTime.Now;
+        _state.Runs.Add(new RunData
+        {
+            Created = DateTime.Now,
+            FilesCount = filesCount,
+            SavedBytes = reducedSize
+        });
     }
 
     private async Task<string> GetAdminTokenAsync()
