@@ -1,15 +1,14 @@
-# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY PocketBaseTrailRedux/PocketBaseTrailRedux.csproj .
+COPY *.csproj .
 RUN dotnet restore
-COPY PocketBaseTrailRedux/ .
-RUN dotnet publish -c Release -o /app/publish
+COPY . .
+RUN dotnet publish -c Release -o /app
 
-# Runtime stage  
 FROM mcr.microsoft.com/dotnet/runtime:10.0
 WORKDIR /app
-COPY --from=build /app/publish .
+COPY --from=build /app .
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
+
 ENTRYPOINT ["./entrypoint.sh"]
