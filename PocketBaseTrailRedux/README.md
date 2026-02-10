@@ -6,11 +6,7 @@ Automatically reduces the file size of GPX tracks stored in a [Wanderer](https:/
 
 ### 1. Create your configuration
 
-Copy the example config and fill in your values:
-
-```bash
-cp config.example.json config.json
-```
+Copy the example config and fill in your values. Also copy the "state.json" to the target directory if you are mounting it as a directory
 
 ### 2. Start the service
 
@@ -31,9 +27,10 @@ services:
     volumes:
       - ./config.json:/app/config.json:ro
       - ./backups:/app/backups
-      - ./state.json:/app/state.json
+      #- ./state.json:/app/state.json 
     restart: unless-stopped
 ```
+
 
 ### Environment variables
 
